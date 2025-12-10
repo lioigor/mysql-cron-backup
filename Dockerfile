@@ -1,31 +1,17 @@
-FROM golang:1.20.4-alpine3.18 AS binary
-RUN apk -U add openssl git
+FROM mysql:8.4
 
-ARG DOCKERIZE_VERSION=v0.7.0
-WORKDIR /go/src/github.com/jwilder
-RUN git clone https://github.com/jwilder/dockerize.git && \
-    cd dockerize && \
-    git checkout ${DOCKERIZE_VERSION}
-
-WORKDIR /go/src/github.com/jwilder/dockerize
-ENV GO111MODULE=on
-RUN go mod tidy
-RUN CGO_ENABLED=0 GOOS=linux GO111MODULE=on go build -a -o /go/bin/dockerize .
-
-FROM alpine:3.20.3
-LABEL maintainer "Fco. Javier Delgado del Hoyo <frandelhoyo@gmail.com>"
-
-RUN apk add --update \
+RUN microdnf install -y \
     tzdata \
     bash \
     gzip \
     openssl \
-    mysql-client=~10.11 \
-    mariadb-connector-c \
-    fdupes && \
-    rm -rf /var/cache/apk/*
+    cronie \
+    tar && \
+    microdnf clean all
 
-COPY --from=binary /go/bin/dockerize /usr/local/bin
+ARG DOCKERIZE_VERSION=v0.7.0
+RUN curl -sSL https://github.com/jwilder/dockerize/releases/download/${DOCKERIZE_VERSION}/dockerize-linux-amd64-${DOCKERIZE_VERSION}.tar.gz \
+    | tar -xz -C /usr/local/bin
 
 ENV CRON_TIME="0 3 * * sun" \
     MYSQL_HOST="mysql" \
@@ -33,9 +19,10 @@ ENV CRON_TIME="0 3 * * sun" \
     TIMEOUT="10s" \
     MYSQLDUMP_OPTS="--quick"
 
-COPY ["run.sh", "backup.sh", "restore.sh", "/delete.sh", "/"]
+COPY ["run.sh", "backup.sh", "restore.sh", "delete.sh", "/"]
+
 RUN mkdir /backup && \
-    chmod 777 /backup && \ 
+    chmod 777 /backup && \
     chmod 755 /run.sh /backup.sh /restore.sh /delete.sh && \
     touch /mysql_backup.log && \
     chmod 666 /mysql_backup.log
